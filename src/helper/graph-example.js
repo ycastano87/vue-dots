@@ -1,12 +1,15 @@
 export default {
   nodes: [
     {
+      id: 0,
       x: 20,
       y: 30
     }, {
+      id: 1,
       x: 60,
       y: 25
     }, {
+      id: 2,
       x: 100,
       y: 67
     }
