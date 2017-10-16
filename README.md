@@ -1,6 +1,6 @@
 # vue-dots
 
-> Show dots and connections among them
+> Graph building and visualization vue component based in SVG
 
 ## Build Setup
 
