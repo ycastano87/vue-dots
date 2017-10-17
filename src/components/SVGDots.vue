@@ -1,5 +1,5 @@
 <template>
-  <svg width="100%" height="100%" @click="clickNode" @dblclick="resetPathStartingPoint">
+  <svg width="100%" height="100%" @click="clickSVG" @dblclick="resetPathStartingPoint">
     <circle v-for="n in nodes" 
       :cx="n.x" :cy="n.y" r="10" :key="'n' + n.id" :nodeId="n.id"
       @click="nodeClick" @mousedown="startDragNode"
@@ -11,7 +11,7 @@
 
 const BUILD = 1
 const MOVE = 2
-// const DELETE = 3
+const DELETE = 3
 
 export default {
   data () {
@@ -84,27 +84,47 @@ export default {
       window.removeEventListener('mousemove', this.moveNode)
       window.removeEventListener('mouseup', this.stopDragNode)
     },
+    // called when a node is clicked
     nodeClick (event) {
-      if (this.mode === BUILD) {
-        const nodeClikedId = parseInt(event.target.getAttribute('nodeId'))
-        console.log('[INFO] node clicked', nodeClikedId)
-        // here we reset the previous node id such that new path
-        // will start from here
-        if (this.prevNodeId !== -1) {
-          console.log('[INFO] Joining nodes...')
-          this.createLink(this.prevNodeId, nodeClikedId)
-        }
-        this.prevNodeId = nodeClikedId
-        this.isSplitting = true
-        event.stopPropagation()
+      const nodeClikedId = parseInt(event.target.getAttribute('nodeId'))
+      console.log('[INFO] node clicked', nodeClikedId)
+      switch (this.mode) {
+        case BUILD:
+          this.linkWithLastCreate(nodeClikedId)
+          break
+        case DELETE:
+          this.deleteNode(nodeClikedId)
+          break
+        default:
+          break
       }
+      event.stopPropagation()
+    },
+    // delete a node given its id
+    deleteNode (id) {
+      console.log('[INFO] delete node', id)
+      // remove the node from the node list
+      this.nodes = this.nodes.filter(n => n.id !== id)
+      // remove the links associated to the node
+      this.links = this.links.filter(l => id !== l.from && id !== l.to)
+    },
+    // join node to the last one
+    linkWithLastCreate (nodeClikedId) {
+      // here we reset the previous node id such that new path
+      // will start from here
+      if (this.prevNodeId !== -1) {
+        console.log('[INFO] Joining nodes...')
+        this.createLink(this.prevNodeId, nodeClikedId)
+      }
+      this.prevNodeId = nodeClikedId
+      this.isSplitting = true
     },
     // create a new node and add it to the node list
     createNode (x, y) {
       // TEST
       if (this.lastId > 4) {
-        console.log('[DEBUG] SWITCHING TO MODE MOVE')
-        this.mode = MOVE
+        console.log('[DEBUG] SWITCHING TO MODE DELETE')
+        this.mode = DELETE
       }
       // END TEST
       // we update the id store
@@ -122,7 +142,7 @@ export default {
     createLink (from, to) {
       this.links.push({from, to})
     },
-    clickNode (event) {
+    clickSVG (event) {
       if (!this.isEditing || this.mode !== BUILD) {
         return
       }
