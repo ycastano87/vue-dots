@@ -4,7 +4,9 @@
       :cx="n.x" :cy="n.y" r="10" :key="'n' + n.id" :nodeId="n.id"
       @click="nodeClick" @mousedown="startDragNode"
       class="circle" :stroke="dotStroke" :fill="dotFill" />
-    <line v-for="l in lineLinks" :x1="l.x1" :y1="l.y1" :x2="l.x2" :y2="l.y2" :style="lineStyle" :key="l.x1+l.y1"/>
+    <line v-for="l in lineLinks" 
+          :x1="l.x1" :y1="l.y1" :x2="l.x2" :y2="l.y2" :style="lineStyle" :key="l.id" :linkId="l.id"
+          class="line" @click.stop="lineClick"/>
   </svg>
 </template>
 <script>
@@ -28,11 +30,39 @@ export default {
       lastMouseY: 0,        // of the mouse position
       beingDragId: -1,      // who is being dragged
       isDragging: false,    // says if we are currently dragging something
-      lineStyle: 'stroke:rgb(0,0,255);stroke-width:3',
+      lineStyle: 'stroke:rgb(0,0,255);stroke-width:4',
       isEditing: true
     }
   },
   methods: {
+    lineClick (event) {
+      const linkId = event.target.getAttribute('linkId')
+      console.log('[INFO] line clicked', linkId)
+      switch (this.mode) {
+        case DELETE:
+          // remove the link from the links list
+          this.links = this.links.filter(l => l.from + '-' + l.to !== linkId)
+          console.log('[INFO] link deleted', linkId)
+          break
+        case BUILD:
+          // we want to remove the clicked link, create a node
+          // and create two new links
+          const {from, to} = this.links.filter(l => l.from + '-' + l.to === linkId)[0]
+          // remove the link from the links list
+          this.links = this.links.filter(l => l.from + '-' + l.to !== linkId)
+          // create a new node
+          const {id} = this.createNode(event.offsetX, event.offsetY)
+          // now create two new links
+          this.createLink(from, id)
+          this.createLink(id, to)
+          console.log('[INFO] Splitting link and adding a new node inbetween')
+          this.prevNodeId = id
+
+          break
+        default:
+          break
+      }
+    },
     startDragNode (event) {
       if (this.mode !== MOVE) {
         return
@@ -123,8 +153,8 @@ export default {
     createNode (x, y) {
       // TEST
       if (this.lastId > 4) {
-        console.log('[DEBUG] SWITCHING TO MODE DELETE')
-        this.mode = DELETE
+        console.log('[DEBUG] SWITCHING TO MODE MOVE')
+        this.mode = MOVE
       }
       // END TEST
       // we update the id store
@@ -172,6 +202,7 @@ export default {
         const n1 = this.nodes.filter(n => n.id === l.from)[0]
         const n2 = this.nodes.filter(n => n.id === l.to)[0]
         return {
+          id: l.from + '-' + l.to,
           x1: n1.x,
           y1: n1.y,
           x2: n2.x,
@@ -186,6 +217,7 @@ export default {
         const n1 = this.nodes.filter(n => n.id === l.from)[0]
         const n2 = this.nodes.filter(n => n.id === l.to)[0]
         return {
+          id: l.from + '-' + l.to,
           x1: n1.x,
           y1: n1.y,
           x2: n2.x,
@@ -208,6 +240,9 @@ export default {
 }
 .circle:hover {
   stroke-width: 16px;
+  cursor: pointer;
+}
+.line:hover {
   cursor: pointer;
 }
 </style>
