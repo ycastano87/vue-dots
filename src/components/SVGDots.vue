@@ -1,22 +1,31 @@
 <template>
   <div>
     <span class="controls">
-      <build-path @click.native.stop="setBuildingMode" v-bind:class="this.mode == BUILD ? 'selected' : ''"/>
-      <move @click.native.stop="setMoveMode" v-bind:class="this.mode == MOVE ? 'selected' : ''"/>
-      <delete @click.native.stop="setDeleteMode" v-bind:class="this.mode == DELETE ? 'selected' : ''"/>
+      <build-path @click.native.stop="setBuildingMode" v-bind:class="this.state.mode == BUILD ? 'selected' : ''"/>
+      <move @click.native.stop="setMoveMode" v-bind:class="this.state.mode == MOVE ? 'selected' : ''"/>
+      <delete @click.native.stop="setDeleteMode" v-bind:class="this.state.mode == DELETE ? 'selected' : ''"/>
       <zoom-in @click.native.stop="zoomIn"/>
       <zoom-out @click.native.stop="zoomOut"/>
     </span>
     <svg id="svgMap" width="100%" height="100%" @click="clickSVG" @mousedown="mousedownSVG" @dblclick="resetPathStartingPoint">
+      <defs>
+        <filter id="dropShadow" x="0" y="0">
+          <feOffset result="offOut" in="SourceAlpha" dx="-2" dy="-2" />
+          <feGaussianBlur result="blurOut" in="offOut" stdDeviation="5" />
+          <feBlend in="SourceGraphic" in2="blurOut" mode="normal" />
+        </filter>
+      </defs>
       <g id="groupScale" transform="scale(1)">
         <g id="groupMove" transform="translate(0,0)">
-          <image xlink:href="/static/Third_Floor_Plan_2016.jpg" />
-          <circle v-for="n in nodes" 
+         <image xlink:href="/static/Third_Floor_Plan_2016.jpg" />
+         <image class="locations" v-for="img in images" :xlink:href="img.url" :x="img.x" :y="img.y" :id="img.id" :key="'img' + img.id"
+                filter="url(#dropShadow)" />
+          <circle v-for="n in state.nodes" 
             :cx="n.x" :cy="n.y" r="7" :key="'n' + n.id" :nodeId="n.id"
             @click="nodeClick" @mousedown.stop="startDragNode"
-            class="circle" :stroke="dotStroke" :fill="dotFill" />
+            class="circle" :stroke="state.dotStroke" :fill="state.dotFill" />
           <line v-for="l in lineLinks" 
-                :x1="l.x1" :y1="l.y1" :x2="l.x2" :y2="l.y2" :style="lineStyle" :key="l.id" :linkId="l.id"
+                :x1="l.x1" :y1="l.y1" :x2="l.x2" :y2="l.y2" :style="state.lineStyle" :key="l.id" :linkId="l.id"
                 class="line" @click.stop="lineClick"/>
         </g>
       </g>
@@ -29,10 +38,7 @@ import ZoomOut from './icons/ZoomOut'
 import Delete from './icons/Delete'
 import Move from './icons/Move'
 import BuildPath from './icons/BuildPath'
-
-const BUILD = 1
-const MOVE = 2
-const DELETE = 3
+import {BUILD, MOVE, DELETE, store} from './store'
 
 export default {
   components: {
@@ -44,47 +50,42 @@ export default {
   },
   data () {
     return {
+      images: [
+        {url: '/static/zara.jpg', id: 'zara', x: 120, y: 100},
+        {url: '/static/h_m.png', id: 'HM', x: 250, y: 200}
+      ],
       // make the constants available in the template
       BUILD: BUILD,
       MOVE: MOVE,
       DELETE: DELETE,
-      background: '/static/Third_Floor_Plan_2016.jpg',
-      scale: 1,
-      shiftX: 0,
-      shiftY: 0,
-      nodes: [],            // graphSample.nodes,
-      links: [],            // graphSample.links,
       isSplitting: false,
-      lastId: -1,           // used to assign id to new nodes
       prevNodeId: -1,       // last node from which a link will be constructed
-      dotStroke: 'rgb(107, 107, 144)',    // dot stroke, as appears in the svg
-      dotFill: 'rgb(107, 107, 144)',      // dot fill color
-      mode: BUILD,          // current mode of the component
       lastMouseX: 0,        // contains the information about the last values
       lastMouseY: 0,        // of the mouse position
       beingDragId: -1,      // who is being dragged
       isDragging: false,    // says if we are currently dragging something
-      lineStyle: 'stroke:rgb(107, 107, 144);stroke-width:4',
-      isEditing: true
+      isEditing: true,
+      state: store.state,
+      actions: store.actions
     }
   },
   methods: {
     zoomIn (event) {
       console.log('[INFO] Zooming in')
       const g = document.querySelector('#groupScale')
-      const newScale = parseFloat(this.scale) + 0.1
-      this.scale = newScale
+      const newScale = parseFloat(this.state.scale) + 0.1
+      this.actions.setScale(newScale)
       g.setAttribute('transform', 'scale(' + newScale + ')')
     },
     zoomOut (event) {
       console.log('[INFO] Zooming out')
       const g = document.querySelector('#groupScale')
-      const newScale = parseFloat(this.scale) - 0.1
-      this.scale = newScale
+      const newScale = parseFloat(this.state.scale) - 0.1
+      this.actions.setScale(newScale)
       g.setAttribute('transform', 'scale(' + newScale + ')')
     },
     mousedownSVG (event) {
-      if (this.mode !== MOVE) {
+      if (this.state.mode !== MOVE) {
         return
       }
       // save mouse position for the next movement
@@ -95,7 +96,7 @@ export default {
       window.addEventListener('mouseup', this.stopPanSVG)
     },
     panSVG (event) {
-      if (this.mode !== MOVE) {
+      if (this.state.mode !== MOVE) {
         return
       }
       // get how much we move from the last mouse event
@@ -109,14 +110,7 @@ export default {
 
       // keep aware of future changes
       window.addEventListener('resize', this.resizeSVG)
-
-      const newX = this.shiftX + dx
-      const newY = this.shiftY + dy
-      transform = 'translate(' + newX + ',' + newY + ')'
-      console.log('[DEBUG] moving', transform)
-      // save how much did we shift the svg
-      this.shiftX = newX
-      this.shiftY = newY
+      transform = this.actions.shiftSVG(dx, dy)
       // move the svg
       g.setAttribute('transform', transform)
     },
@@ -131,7 +125,7 @@ export default {
       return '0 0 ' + box.width + ' ' + box.height
     },
     stopPanSVG (event) {
-      if (this.mode !== MOVE) {
+      if (this.state.mode !== MOVE) {
         return
       }
       console.log('[DEBUG] stop pan')
@@ -140,48 +134,31 @@ export default {
       window.removeEventListener('mouseup', this.stopPanSVG)
     },
     setBuildingMode (event) {
-      console.log('[INFO] Setting BUILD mode')
       this.prevNodeId = -1
-      this.mode = BUILD
+      this.actions.setBuildingMode()
     },
     setMoveMode (event) {
-      console.log('[INFO] Setting MOVE mode')
-      this.mode = MOVE
+      this.actions.setMoveMode()
     },
     setDeleteMode (event) {
-      console.log('[INFO] Setting DELETE mode')
-      this.mode = DELETE
+      this.actions.setDeleteMode()
     },
     lineClick (event) {
       const linkId = event.target.getAttribute('linkId')
       console.log('[INFO] line clicked', linkId)
-      switch (this.mode) {
+      switch (this.state.mode) {
         case DELETE:
-          // remove the link from the links list
-          this.links = this.links.filter(l => l.from + '-' + l.to !== linkId)
-          console.log('[INFO] link deleted', linkId)
+          this.actions.deleteLink(linkId)
           break
         case BUILD:
-          // we want to remove the clicked link, create a node
-          // and create two new links
-          const {from, to} = this.links.filter(l => l.from + '-' + l.to === linkId)[0]
-          // remove the link from the links list
-          this.links = this.links.filter(l => l.from + '-' + l.to !== linkId)
-          // create a new node
-          const {id} = this.createNode(event.offsetX, event.offsetY)
-          // now create two new links
-          this.createLink(from, id)
-          this.createLink(id, to)
-          console.log('[INFO] Splitting link and adding a new node inbetween')
-          this.prevNodeId = id
-
+          this.prevNodeId = this.actions.splitLink(linkId, event.offsetX, event.offsetY)
           break
         default:
           break
       }
     },
     startDragNode (event) {
-      if (this.mode !== MOVE) {
+      if (this.state.mode !== MOVE) {
         return
       }
       // set the on mouse move listener
@@ -197,7 +174,7 @@ export default {
       this.beingDragId = nodeId
     },
     moveNode (event) {
-      if (this.mode !== MOVE || !this.isDragging) {
+      if (this.state.mode !== MOVE || !this.isDragging) {
         return
       }
       // get how much we move from the last mouse event
@@ -207,21 +184,10 @@ export default {
       this.lastMouseX = event.offsetX
       this.lastMouseY = event.offsetY
       // move the node
-      this.shiftNode(this.beingDragId, dx, dy)
-    },
-    shiftNode (nodeId, dx, dy) {
-      // get the node to shift
-      for (let i = 0; i < this.nodes.length; i++) {
-        let node = this.nodes[i]
-        if (node.id === nodeId) {
-          node.x += dx
-          node.y += dy
-          break
-        }
-      }
+      this.actions.shiftNode(this.beingDragId, dx, dy)
     },
     stopDragNode (event) {
-      if (this.mode !== MOVE) {
+      if (this.state.mode !== MOVE) {
         return
       }
       // set the dragging mode
@@ -234,25 +200,17 @@ export default {
     nodeClick (event) {
       const nodeClikedId = parseInt(event.target.getAttribute('nodeId'))
       console.log('[INFO] node clicked', nodeClikedId)
-      switch (this.mode) {
+      switch (this.state.mode) {
         case BUILD:
           this.linkWithLastCreate(nodeClikedId)
           break
         case DELETE:
-          this.deleteNode(nodeClikedId)
+          this.actions.deleteNode(nodeClikedId)
           break
         default:
           break
       }
       event.stopPropagation()
-    },
-    // delete a node given its id
-    deleteNode (id) {
-      console.log('[INFO] delete node', id)
-      // remove the node from the node list
-      this.nodes = this.nodes.filter(n => n.id !== id)
-      // remove the links associated to the node
-      this.links = this.links.filter(l => id !== l.from && id !== l.to)
     },
     // join node to the last one
     linkWithLastCreate (nodeClikedId) {
@@ -260,49 +218,28 @@ export default {
       // will start from here
       if (this.prevNodeId !== -1) {
         console.log('[INFO] Joining nodes...')
-        this.createLink(this.prevNodeId, nodeClikedId)
+        this.actions.createLink(this.prevNodeId, nodeClikedId)
       }
       this.prevNodeId = nodeClikedId
       this.isSplitting = true
     },
-    // create a new node and add it to the node list
-    createNode (x, y) {
-      // we update the id store
-      x /= this.scale
-      x -= this.shiftX
-      y /= this.scale
-      y -= this.shiftY
-      this.lastId++
-      const newNode = {
-        id: this.lastId,
-        x,
-        y
-      }
-      // adding the new node to nodes list
-      this.nodes.push(newNode)
-      return newNode
-    },
-    // adds a new link given the from and to nodes id
-    createLink (from, to) {
-      this.links.push({from, to})
-    },
     clickSVG (event) {
-      if (!this.isEditing || this.mode !== BUILD) {
+      if (!this.isEditing || this.state.mode !== BUILD) {
         return
       }
-      const newNode = this.createNode(event.offsetX, event.offsetY)
+      const newNode = this.actions.createNode(event.offsetX, event.offsetY)
 
       // if preNode is -1 this means that this node is a starting point
       // so at this time we don't add any link
       if (this.prevNodeId !== -1) {
-        this.createLink(this.prevNodeId, newNode.id)
+        this.actions.createLink(this.prevNodeId, newNode.id)
       }
 
       if (this.isSplitting) {
         // the previous node id was already set
         this.isSplitting = false
       }
-      this.prevNodeId = this.lastId
+      this.prevNodeId = newNode.id
     },
     resetPathStartingPoint (event) {
       console.log('[INFO] reseting starting point of the path')
@@ -311,9 +248,9 @@ export default {
   },
   computed: {
     lineLinks () {
-      return this.links.map(l => {
-        const n1 = this.nodes.filter(n => n.id === l.from)[0]
-        const n2 = this.nodes.filter(n => n.id === l.to)[0]
+      return this.state.links.map(l => {
+        const n1 = this.state.nodes.filter(n => n.id === l.from)[0]
+        const n2 = this.state.nodes.filter(n => n.id === l.to)[0]
         return {
           id: l.from + '-' + l.to,
           x1: n1.x,
@@ -326,9 +263,9 @@ export default {
   },
   watch: {
     links () {
-      return this.links.map(l => {
-        const n1 = this.nodes.filter(n => n.id === l.from)[0]
-        const n2 = this.nodes.filter(n => n.id === l.to)[0]
+      return this.state.links.map(l => {
+        const n1 = this.state.nodes.filter(n => n.id === l.from)[0]
+        const n2 = this.state.nodes.filter(n => n.id === l.to)[0]
         return {
           id: l.from + '-' + l.to,
           x1: n1.x,
@@ -377,5 +314,9 @@ div{
 }
 .line:hover {
   cursor: pointer;
+}
+.locations {
+  width: 64px;
+  height: 64px;
 }
 </style>
